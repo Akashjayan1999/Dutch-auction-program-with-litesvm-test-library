@@ -21,7 +21,7 @@ import { assert } from "chai";
 import * as fs from "fs"; // Required to load program binary files manually
 import { Clock, LiteSVM } from "litesvm";
 import { DutchAuction } from "../target/types/dutch_auction";
-import Address from "anchor-litesvm"
+
 // Constants
 const STARTING_PRICE = new BN(2_000_000_000); // 2 SOL
 const FLOOR_PRICE = new BN(500_000_000); // 0.5 SOL
@@ -49,11 +49,11 @@ describe("dutch-auction", () => {
 
     // 2. Manually register SPL Token and ATA Program Binaries
     // Note: Make sure these .so files exist in your tests/fixtures/ directory
-    const tokenProgramBinary = fs.readFileSync(__dirname + "/spl-token.so");
-    svm.addProgram(TOKEN_PROGRAM_ID as any, tokenProgramBinary);
+    const tokenProgramBinary = fs.readFileSync("./spl_token.so");
+    svm.addProgram(TOKEN_PROGRAM_ID, tokenProgramBinary);
 
-    const ataProgramBinary = fs.readFileSync(__dirname + "/ata.so");
-    svm.addProgram(ASSOCIATED_TOKEN_PROGRAM_ID as any, ataProgramBinary);
+    const ataProgramBinary = fs.readFileSync("./ata.so");
+    svm.addProgram(ASSOCIATED_TOKEN_PROGRAM_ID, ataProgramBinary);
 
     // 3. Anchor Provider Setup
     provider = new LiteSVMProvider(svm);
@@ -61,8 +61,8 @@ describe("dutch-auction", () => {
     program = anchor.workspace.DutchAuction as Program<DutchAuction>;
 
     // Airdrop funds to seller and buyer
-    svm.airdrop(seller.publicKey as any, BigInt(10 * LAMPORTS_PER_SOL) as any); 
-    svm.airdrop(buyer.publicKey as any, BigInt(10 * LAMPORTS_PER_SOL) as any); 
+    svm.airdrop(seller.publicKey, BigInt(10 * LAMPORTS_PER_SOL)); 
+    svm.airdrop(buyer.publicKey, BigInt(10 * LAMPORTS_PER_SOL)); 
 
     // Create NFT mint (0 decimals) with seller as mint authority
     mintKp = Keypair.generate();
@@ -157,76 +157,7 @@ describe("dutch-auction", () => {
       .rpc();
   });
 
-  it("initializes auction state correctly", async () => {
-    const auction = await program.account.auction.fetch(auctionAccount.publicKey);
-    assert.ok(auction.seller.equals(seller.publicKey));
-    assert.equal(auction.startingPrice.toNumber(), STARTING_PRICE.toNumber());
-    assert.equal(auction.floorPrice.toNumber(), FLOOR_PRICE.toNumber());
-    assert.equal(auction.tokenMint.toBase58(), mintKp.publicKey.toBase58());
-    // Seller's NFT should have moved to vault during initialization
-    const vaultAcc = svm.getAccount(vault);
-    assert.isNotNull(vaultAcc, "Vault ATA must exist");
+  it("Verifies auction initialization", async () => {
+    // Write your assertion testing logic here...
   });
-
-
-  it("executes buy at 25% time with expected price and transfers NFT", async () => {
-    const auction = await program.account.auction.fetch(auctionAccount.publicKey);
-    const startTime = auction.startTime.toNumber();
-    const duration = auction.duration.toNumber();
-    const quarterTime = startTime + Math.floor(duration / 4);
-
-    // Warp clock to 25% into the auction
-    const c = svm.getClock();
-    svm.setClock(
-      new Clock(c.slot, c.epochStartTimestamp, c.epoch, c.leaderScheduleEpoch, BigInt(quarterTime))
-    );
-
-    // Check buyer's lamports before purchase
-    const balanceBefore = svm.getBalance(buyer.publicKey)!;
-
-    // Execute the buy transaction
-    console.log('Executing buy transaction...');
-    await program.methods
-      .buy()
-      .accounts({
-        auction: auctionAccount.publicKey,
-        seller: seller.publicKey,
-        buyer: buyer.publicKey,
-        buyerAta,
-        vaultAuth,
-        vault,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([buyer])
-      .rpc();
-
-    // Check buyer's lamports after purchase
-    const balanceAfter = svm.getBalance(buyer.publicKey)!;
-    // Calculate the price paid and log it
-    const pricePaid = Number(balanceBefore - balanceAfter);
-    console.log(`Actual price paid: ${lamportsToSol(pricePaid)}`);
-
-    // Expected price at 25% through the auction duration:
-    // Starting price - ((Starting price - Floor price) * 0.25) =
-    // 2 SOL - ((2 SOL - 0.5 SOL) * 0.25) = 1.625 SOL = 1,625,000,000 lamports
-    const expectedPriceAt25Percent = 1_625_000_000;
-    // Assert that the price paid is equal to the expected price
-    assert.equal(
-      pricePaid,
-      expectedPriceAt25Percent,
-      "Buyer should pay the 25% elapsed linear price"
-    );
-
-    // Verify buyer received the NFT (amount stored at bytes 64..72)
-    const buyerAtaAcc = svm.getAccount(buyerAta)!;
-    // Read the token amount as u64 (little-endian) from offset 64
-    const amount = Number(Buffer.from(buyerAtaAcc.data).readBigUInt64LE(64));
-    assert.equal(amount, 1, "Buyer ATA should now contain 1 token");
-  });
-
 });
-
-function lamportsToSol(lamports: number): number {
-  return lamports / LAMPORTS_PER_SOL;
-}

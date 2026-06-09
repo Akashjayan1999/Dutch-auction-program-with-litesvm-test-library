@@ -79,7 +79,7 @@ pub mod dutch_auction {
         // Transfer NFT to buyer
         let auction_key = ctx.accounts.auction.key();
         let vault_auth_bump = ctx.bumps.vault_auth;
-        let bump_slice = &[vault_auth_bump]; // ✅ stored separately so it's &[u8]
+        let bump_slice = &[vault_auth_bump]; 
 
         let vault_signer_seeds: &[&[u8]] = &[b"vault", auction_key.as_ref(), bump_slice];
 
